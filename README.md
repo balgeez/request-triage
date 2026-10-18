@@ -1,35 +1,39 @@
 # Request Triage
 
-A small, single-file tool that ranks a backlog of internal-tool requests so the highest-impact, easiest-to-fix items get built first.
+**Live demo: https://balgeez.github.io/request-triage/**
 
-**Live demo:** https://balgeez.github.io/request-triage/ (after you enable GitHub Pages, see below)
+Most teams have more tool requests than people to build them. This is a small tool I made to show how I'd decide what to build first.
 
-## What it does
+You give each request a 1 to 5 rating for how manual, stale and error-prone the current process is, how many teams it affects, and how hard it would be to build. The tool ranks the backlog, sorts it into Now / Next / Later, and flags each item as either something to build directly (a script, a no-code tool) or something that needs a written spec for an engineer.
 
-Each request is rated 1 to 5 on how manual, stale and error-prone it is today, how many teams it touches, and how hard it is to build. The tool turns that into a priority score, ranks the backlog, and splits it into a Now / Next / Later roadmap. Items that are small to build are tagged "build directly"; bigger ones are tagged "write a spec" for an engineering partner.
+## Try it
 
-The scoring is intentionally simple so a non-technical stakeholder can follow it:
+- Change any rating and watch the ranking reshuffle.
+- Move the weight sliders. If you care more about error-prone reports than stale ones, the order changes.
+- Add your own request at the bottom of the left panel.
 
-- pain = weighted sum of manual, stale and error-prone ratings
-- impact = pain x number of teams affected
-- priority = impact / effort, scaled to 100
+## How the score works
 
-You can change the weights, edit any rating, and add your own requests.
+I kept it simple on purpose, so anyone in a prioritization meeting can follow it:
 
-## Sample data
+- **Pain** = manual + stale + error-prone, each multiplied by its weight
+- **Impact** = pain x number of teams affected
+- **Priority** = impact / effort, scaled to 0 to 100
 
-Every request in the demo is invented for illustration. None of it comes from a real company.
+Effort of 1 or 2 means "build directly." Effort of 3 or more means "write a spec."
 
-## Run it
+## What this is not
 
-No build step and no dependencies. Open `index.html` in a browser.
+- All the sample requests are made up. None of it comes from a real company.
+- It's a single HTML file. Nothing is saved when you refresh the page.
+- The 1 to 5 ratings are judgment calls, not measurements. In real use I'd want to back them with data where possible (hours spent per week, number of corrections per month).
 
-## Host it on GitHub Pages
+## If I built this for real
 
-1. Create a repo named `request-triage` and add `index.html` and this README.
-2. In the repo, go to Settings > Pages, choose "Deploy from a branch", pick `main` and `/ (root)`, and save.
-3. Your page will be live at `https://balgeez.github.io/request-triage/` within a minute or two.
+I'd connect it to an intake form so requests arrive already rated, store them somewhere shared, and let each team see where their request sits and why. I'd also check the scoring against what actually shipped and adjust the weights.
 
-## Why I built it
+## Built with
 
-I wanted to show, not just describe, how I'd start on the intake and prioritization side of an internal tools role.
+Plain HTML, CSS and JavaScript. No frameworks, no build step. Open `index.html` in a browser to run it locally.
+
+Made by [Baljeet Singh](https://github.com/balgeez).
