@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Request Triage: what gets built first?</title>
+<meta name="description" content="A small tool that ranks a messy internal-tools backlog by how manual, stale and error-prone each item is, against build effort.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef1f4;--panel:#fff;--ink:#1b2430;--mute:#5d6b7a;--line:#d5dce3;--accent:#0f6e6e;--accent-soft:#d6ecec;--amber:#a86a00;--amber-soft:#f6e6c8;--bar:#0f6e6e;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141b22;--panel:#1c252e;--ink:#e6ebf0;--mute:#9aa8b6;--line:#2e3a46;--accent:#5cc2c2;--accent-soft:#17383a;--amber:#e3b25a;--amber-soft:#3b2f15;--bar:#5cc2c2;color-scheme:dark}}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+main{max-width:1040px;margin:0 auto;padding:28px 18px 56px}
+h1{font-size:clamp(1.9rem,4.5vw,2.9rem);line-height:1.08;font-weight:800;margin:0 0 10px;letter-spacing:-.02em;max-width:18ch}
+.lede{max-width:62ch;color:var(--mute);margin:0 0 14px}
+.note{display:inline-block;background:var(--amber-soft);color:var(--amber);border-radius:6px;padding:4px 10px;font-size:.85rem;font-weight:600;margin-bottom:22px}
+.grid{display:grid;grid-template-columns:260px 1fr;gap:20px;align-items:start}
+@media (max-width:820px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.panel h2{font-size:1rem;margin:0 0 4px}
+.panel p{font-size:.85rem;color:var(--mute);margin:0 0 12px}
+.ctl{margin:0 0 12px}
+.ctl label{display:flex;justify-content:space-between;font-size:.88rem;font-weight:600}
+.ctl input[type=range]{width:100%;accent-color:var(--accent)}
+.add{display:flex;gap:8px;margin-top:6px}
+.add input{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;font-size:.9rem}
+button{font:inherit;font-size:.9rem;font-weight:600;padding:8px 12px;border-radius:6px;border:0;background:var(--accent);color:#fff;cursor:pointer}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) button{color:#0b1a1a}}
+button.ghost{background:transparent;color:var(--mute);border:1px solid var(--line);margin-top:10px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.scroll{overflow-x:auto}
+.row{display:grid;grid-template-columns:30px minmax(170px,1.5fr) repeat(4,64px) minmax(120px,1fr);gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);min-width:700px}
+.row.head{font-size:.78rem;color:var(--mute);font-weight:600;border-bottom:2px solid var(--line)}
+.rank{font-weight:800;color:var(--accent)}
+.name{font-weight:600;line-height:1.3}
+.name small{display:block;font-weight:400;color:var(--mute);font-size:.8rem}
+.row input[type=number]{width:56px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;text-align:center}
+.score{display:flex;align-items:center;gap:8px}
+.track{flex:1;height:10px;background:var(--line);border-radius:5px;overflow:hidden}
+.fill{height:100%;background:var(--bar);transition:width .35s}
+.num{font-weight:800;width:2ch;text-align:right}
+.tag{display:inline-block;font-size:.75rem;font-weight:600;border-radius:5px;padding:2px 7px;margin-top:3px}
+.tag.direct{background:var(--accent-soft);color:var(--accent)}
+.tag.spec{background:var(--amber-soft);color:var(--amber)}
+h2.sec{font-size:1.25rem;margin:30px 0 4px}
+.sub{color:var(--mute);margin:0 0 12px;font-size:.92rem}
+.road{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media (max-width:820px){.road{grid-template-columns:1fr}}
+.lane{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.lane h3{margin:0 0 8px;font-size:1rem}
+.lane ul{margin:0;padding:0;list-style:none}
+.lane li{padding:6px 0;border-top:1px solid var(--line);font-size:.92rem}
+.lane li:first-child{border-top:0}
+.why{margin-top:30px;color:var(--mute);font-size:.9rem;max-width:70ch}
+.why a{color:var(--accent)}
+@media (prefers-reduced-motion:reduce){.fill{transition:none}}
+</style>
+</head>
+<body>
+<main>
+<h1>What should get built first?</h1>
+<p class="lede">Every team has more tool requests than builders. This ranks a backlog by how manual, stale and error-prone each item is, how many teams it touches, and how hard it is to build. Change a number or a weight and the order updates.</p>
+<span class="note">Sample data. These requests are invented, not Lambda's.</span>
+
+<div class="grid">
+  <aside class="panel" aria-label="Scoring weights">
+    <h2>How much does each factor matter?</h2>
+    <p>Weights apply to the pain score.</p>
+    <div class="ctl"><label for="wm">Manual work <span id="vm"></span></label><input id="wm" type="range" min="0" max="3" step="1" value="2"></div>
+    <div class="ctl"><label for="ws">Stale data <span id="vs"></span></label><input id="ws" type="range" min="0" max="3" step="1" value="1"></div>
+    <div class="ctl"><label for="we">Error-prone <span id="ve"></span></label><input id="we" type="range" min="0" max="3" step="1" value="2"></div>
+    <h2 style="margin-top:16px">Add a request</h2>
+    <div class="add"><input id="newname" type="text" placeholder="e.g. Quarterly board deck" aria-label="Request name"><button id="addbtn" type="button">Add</button></div>
+    <button class="ghost" id="reset" type="button">Reset sample data</button>
+  </aside>
+
+  <section class="panel scroll" aria-label="Ranked backlog">
+    <div class="row head"><span>#</span><span>Request</span><span>Manual</span><span>Stale</span><span>Errors</span><span>Teams</span><span>Priority</span></div>
+    <div id="list"></div>
+    <div class="row head" style="border-bottom:0"><span></span><span>Rate each 1 to 5. Effort is shown under each name.</span></div>
+  </section>
+</div>
+
+<h2 class="sec">The roadmap this produces</h2>
+<p class="sub">Top three go Now, the next three go Next, the rest wait. Small builds ship directly; bigger ones get a written spec for an engineering partner.</p>
+<div class="road" id="road"></div>
+
+<p class="why">How the score works: pain is the weighted sum of manual, stale and error-prone ratings. Impact is pain times the number of teams affected. Priority is impact divided by effort, scaled to 100. A request with effort 1 or 2 is tagged "build directly"; effort 3 or more is tagged "write a spec". It is deliberately simple so a stakeholder can follow the reasoning. Built by <a href="https://github.com/balgeez">Baljeet Singh</a>.</p>
+</main>
+
+<script>
+(function(){
+var SAMPLE=[
+["Weekly GPU capacity report","Rebuilt by hand in Sheets every Monday",5,4,4,3,2],
+["Monthly revenue rollup","Finance copies numbers from three exports",5,3,5,4,4],
+["Sales pipeline snapshot","Two teams, two definitions of a closed deal",4,4,5,3,3],
+["Support SLA tracker","Updated whenever someone remembers",4,5,3,2,2],
+["Vendor invoice approvals","Email chains and a shared spreadsheet",5,3,4,2,4],
+["Headcount and hiring dashboard","Exported from HR system each quarter",3,4,2,5,3],
+["Customer usage summary for execs","Drill-down from total to account is missing",4,3,3,4,5],
+["New-hire equipment checklist","Tracked in a doc nobody owns",3,2,3,2,1]
+];
+var data=[],W={m:2,s:1,e:2};
+function load(){data=SAMPLE.map(function(r){return{n:r[0],d:r[1],m:r[2],s:r[3],e:r[4],t:r[5],f:r[6]}})}
+function clamp(v){v=parseInt(v,10);return isNaN(v)?1:Math.max(1,Math.min(5,v))}
+function raw(x){return((x.m*W.m+x.s*W.s+x.e*W.e)*x.t)/x.f}
+function esc(s){return s.replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function render(){
+ var max=Math.max.apply(null,data.map(raw).concat([0.0001]));
+ var rows=data.map(function(x,i){return{x:x,i:i,sc:Math.round(raw(x)/max*100)}}).sort(function(a,b){return b.sc-a.sc});
+ document.getElementById("vm").textContent=W.m;document.getElementById("vs").textContent=W.s;document.getElementById("ve").textContent=W.e;
+ var h="";
+ rows.forEach(function(r,k){
+  var x=r.x,direct=x.f<=2;
+  h+='<div class="row"><span class="rank">'+(k+1)+'</span>'+
+  '<span class="name">'+esc(x.n)+'<small>'+esc(x.d||"")+' (effort '+x.f+')</small><span class="tag '+(direct?"direct":"spec")+'">'+(direct?"Build directly":"Write a spec")+'</span></span>'+
+  ["m","s","e","t"].map(function(f){return '<input type="number" min="1" max="5" value="'+x[f]+'" data-i="'+r.i+'" data-f="'+f+'" aria-label="'+esc(x.n)+' '+f+'">'}).join("")+
+  '<span class="score"><span class="track"><span class="fill" style="display:block;width:'+r.sc+'%"></span></span><span class="num">'+r.sc+'</span></span></div>';
+ });
+ var list=document.getElementById("list");
+ var focused=document.activeElement&&document.activeElement.dataset?{i:document.activeElement.dataset.i,f:document.activeElement.dataset.f}:null;
+ list.innerHTML=h;
+ if(focused&&focused.i){var el=list.querySelector('input[data-i="'+focused.i+'"][data-f="'+focused.f+'"]');if(el)el.focus()}
+ var lanes=[["Now",0,3],["Next",3,6],["Later",6,99]],road="";
+ lanes.forEach(function(l){
+  var items=rows.slice(l[1],l[2]);
+  road+='<div class="lane"><h3>'+l[0]+'</h3><ul>'+(items.length?items.map(function(r){return'<li>'+esc(r.x.n)+'<br><span class="tag '+(r.x.f<=2?"direct":"spec")+'">'+(r.x.f<=2?"Build directly":"Write a spec")+'</span></li>'}).join(""):'<li>Nothing here yet. Add a request on the left.</li>')+'</ul></div>';
+ });
+ document.getElementById("road").innerHTML=road;
+}
+document.getElementById("list").addEventListener("change",function(e){
+ var t=e.target;if(t.dataset&&t.dataset.i!==undefined){data[t.dataset.i][t.dataset.f]=clamp(t.value);render()}
+});
+[["wm","m"],["ws","s"],["we","e"]].forEach(function(p){document.getElementById(p[0]).addEventListener("input",function(e){W[p[1]]=parseInt(e.target.value,10);render()})});
+function add(){var inp=document.getElementById("newname"),v=inp.value.trim();if(!v)return;data.push({n:v,d:"Added by you",m:3,s:3,e:3,t:3,f:3});inp.value="";render()}
+document.getElementById("addbtn").addEventListener("click",add);
+document.getElementById("newname").addEventListener("keydown",function(e){if(e.key==="Enter")add()});
+document.getElementById("reset").addEventListener("click",function(){load();render()});
+load();render();
+})();
+</script>
+</body>
+</html>
